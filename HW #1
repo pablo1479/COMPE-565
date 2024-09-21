@@ -1,0 +1,33 @@
+rgbimage = imread('Image File_Watertfall.jpg','jpg');
+imshow(rgbimage);
+
+% RGB Components
+
+% red = rgbimage;
+% red(:,:,2) = 0;
+% red(:,:,3) = 0;
+% imshow(red);
+% 
+% blue = rgbimage;
+% blue(:,:,1) = 0;
+% blue(:,:,2) = 0;
+% imshow(blue);
+% 
+% green = rgbimage;
+% green(:,:,1) = 0;
+% green(:,:,3) = 0;
+% imshow(green);
+
+
+% YCBCR Components
+ycbcrimage = rgb2ycbcr(rgbimage);
+imshow(ycbcrimage);
+
+y = ycbcrimage(:,:,1);
+imshow(y);
+
+cb = ycbcrimage(:,:,2);
+figure, imshow(cb);
+
+cr = ycbcrimage(:,:,3);
+figure, imshow(cr);
