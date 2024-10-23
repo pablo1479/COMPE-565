@@ -1,0 +1,258 @@
+% clear commands
+clc 
+clear all
+close all
+
+%% -------- Importing Image ---------%
+disp('Reading file...');
+image = imread('Image File_Watertfall.jpg');
+imshow(image);
+title('Original Picture');
+
+% -------- YCbCr 4:2:0 --------- %
+
+ycbcr = rgb2ycbcr(image);
+
+y = ycbcr(:,:,1); % lumincance
+cb = ycbcr(:,:,2);
+cr = ycbcr(:,:,3);
+
+
+% ------- Subsampling -------- %
+
+% [rows, cols] = size(cb);
+% 
+% % Cb and Cr Subsampling (4:2:0)
+% cb_subsampled = cb(1:2:rows, 1:2:cols);
+% cr_subsampled = cr(1:2:rows, 1:2:cols);
+
+[rows, cols] = size(cb);
+
+cb_subsampled = zeros(floor(rows/2), floor(cols/2), 'uint8');
+cr_subsampled = zeros(floor(rows/2), floor(cols/2), 'uint8');
+
+% Cb Subsampling (4:2:0)
+for r = 1:2:rows 
+    for c = 1:2:cols
+        cb_subsampled((r+1)/2, (c+1)/2) = cb(r, c);
+    end
+end
+
+% Cr Subsampling (4:2:0)
+for r = 1:2:rows
+    for c = 1:2:cols
+        cr_subsampled((r+1)/2, (c+1)/2) = cr(r, c);
+    end
+end
+
+%% -------- Encoder --------- %%
+% Part A: Compute the 8x8 block DCT transform coefficients of the luminance and chrominance components of the image.
+%      • Please display the DCT coefficient matrix as well as image of the DCT
+%       transformed image blocks of the first 2 blocks in the 6th row (of blocks) from top
+%       for the luminance component. (15 points)
+
+% -------- DCT coefficients ------ %
+
+yDCT = dct2(y);
+cbDCT = dct2(cb_subsampled);
+crDCT = dct2(cr_subsampled);
+
+figure;
+
+subplot(2, 2, 1);
+imshow(yDCT);
+title("DCT Coefficient of Y");
+
+subplot(2, 2, 2);
+imshow(cbDCT);
+title("DCT Coefficient of Cb");
+
+subplot(2, 2, 3);
+imshow(crDCT);
+title("DCT Coefficient of Cr");
+
+%------- first 2 blocks of the 6th row ------- %
+
+DCT_block1 = zeros(8, 8, 'double');
+DCT_block2 = zeros(8, 8, 'double');
+
+DCT_block1 = yDCT(41:48, 1:8);   
+DCT_block2 = yDCT(41:48, 9:16);
+
+figure;
+subplot(1, 2, 1);
+imshow(DCT_block1);  
+title('6th Row - First DCT Block');
+
+subplot(1, 2, 2);
+imshow(DCT_block2);  
+title('6th Row - Second DCT Block');
+
+
+
+
+% Part B: Quantize the DCT image by using the JPEG luminance and chrominance quantizer
+% matrix from the lecture notes.
+%       • Report the following output only for the first 2 blocks in the 6th row from top of
+%       the luminance component: (a) DC DCT coefficient; (b) Zigzag scanned AC DCT
+%       coefficients.
+
+
+% QUANTIZE
+
+luminance_matrix = [
+    16 11 10 16  24  40  51  61;
+    12 12 14 19  26  58  60  55;
+    14 13 16 24  40  57  69  56;
+    14 17 22 29  51  87  80  62;
+    18 22 37 56  68 109 103  77;
+    24 35 55 64  81 104 113  92;
+    49 64 78 87 103 121 120 101;
+    72 92 95 98 112 100 103  99
+];
+
+% section a. DC DCT coefficient
+
+quantized_block1 = round(DCT_block1 ./ luminance_matrix);
+
+block_size = 8;
+[rows, cols] = size(yDCT);
+
+qyDCT = zeros(size(yDCT), 'double');
+
+for i = 1:block_size:rows
+    for j = 1:block_size:cols
+        block = yDCT(i:i+block_size-1, j:j+block_size-1);
+        quantized_block = round(block ./ luminance_matrix);
+        qyDCT(i:i+block_size-1, j:j+block_size-1) = quantized_block;
+    end
+end
+
+figure;
+subplot(1, 2, 1);
+imshow(qyDCT);
+title("qyDCT");
+
+figure;
+subplot(1, 2, 1);
+imshow(quantized_block1);
+title("Quantized Image of Block 1");
+
+% section b. Zigzag scanned AC DCT coefficients
+
+% Initialize arrays to store Zigzag coefficients
+zigzag1 = zeros(1, 63);
+zigzag2 = zeros(1, 63);
+
+% Zigzag traversal for block1
+index1 = 1;  % Index for block1
+for s = 1:15
+    for x = 0:s
+        y = s - x;
+        if x <= 7 && y <= 7
+            if mod(s, 2) == 0
+                if index1 <= 63  
+                    zigzag1(index1) = quantized_block1(y + 1, x + 1);  % Move down
+                    index1 = index1 + 1;
+                end
+            else
+                if index1 <= 63  
+                    zigzag1(index1) = quantized_block1(x + 1, y + 1);  % Move up
+                    index1 = index1 + 1;
+                end
+            end
+        end
+    end
+end
+
+disp('Zigzag Coefficients from Block 1:');
+disp(zigzag1);
+disp('Zigzag Coefficients from Block 2:');
+disp(zigzag2);
+
+%% -------- Decoder --------- %%
+% Inverse Quantize the Quantized Block 
+invquantized_block1 = round(DCT_block1 .* luminance_matrix);
+
+figure;
+subplot(1, 2, 1);
+imshow(invquantized_block1);
+title('iqblock1');
+
+% Inverse Quantize the Quantized Image block by block
+block_size = 8;
+[rows, cols] = size(yDCT);
+
+iqyDCT = zeros(size(yDCT), 'double');
+
+for i = 1:block_size:rows
+    for j = 1:block_size:cols
+        block = qyDCT(i:i+block_size-1, j:j+block_size-1);
+        iqyDCT(i:i+block_size-1, j:j+block_size-1) = round(block .* luminance_matrix);
+    end
+end
+
+figure;
+subplot(1, 2, 1);
+imshow(iqyDCT);
+title('iqyDCT');
+
+% Inverse DCT to reconstruct the image
+reconstructed_ydct = idct2(iqyDCT);
+
+figure;
+subplot(1, 2, 1);
+imshow(reconstructed_ydct);
+title('reconstructed_ydct');
+
+% Inverse DCT for Y, Cb, Cr
+reconstructed_Y = idct2(yDCT);  
+reconstructed_Cb = idct2(cbDCT);  
+reconstructed_Cr = idct2(crDCT);  
+
+figure;
+subplot(1, 2, 1);
+imshow(reconstructed_Y);
+title('reconstructed_Y');
+
+% Resize Cb and Cr channels to match Y channel dimensions
+[m, n] = size(reconstructed_Y);
+reconstructed_Cb_resized = imresize(reconstructed_Cb, [m, n]);
+reconstructed_Cr_resized = imresize(reconstructed_Cr, [m, n]);
+
+% Concatenate Y, Cb, Cr to form YCbCr image
+reconstructed_ycbcr = cat(3, reconstructed_Y, reconstructed_Cb_resized, reconstructed_Cr_resized);
+reconstructed_qycbcr = cat(3, reconstructed_ydct, reconstructed_Cb_resized, reconstructed_Cr_resized);
+
+% Convert reconstructed YCbCr back to RGB
+reconstructed_image = ycbcr2rgb(uint8(reconstructed_ycbcr));
+reconstructed_image2 = ycbcr2rgb(uint8(reconstructed_qycbcr));
+
+% Display the reconstructed image
+figure;
+imshow(reconstructed_image);
+title('Reconstructed RGB Image');
+
+figure;
+imshow(reconstructed_image2);
+title('Reconstructed RGB Image2');
+
+%% Luminance Error
+% Compute and display the luminance error
+original_Y = double(ycbcr(:,:,1));  % Convert original Y channel to double
+luminance_error = abs(original_Y - reconstructed_Y);  % Compute absolute difference
+luminance_error2 = abs(original_Y - reconstructed_ydct);
+
+figure;
+imshow(luminance_error, []);
+title('Error Image (Luminance)');
+
+figure;
+imshow(luminance_error2, []);
+title('Error Image (Luminance)');
+
+%% PSNR Calculation
+mse_Y = immse(double(original_Y), double(reconstructed_ydct));  % Compute MSE
+psnr_Y = 10 * log10( 255^2 / mse_Y );  % Compute PSNR
+
+fprintf('PSNR for the luminance component 2nd: %.2f dB\n', psnr_Y);
